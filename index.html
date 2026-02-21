@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>משחק הזיכרון</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background: #e0f2f1; touch-action: none; }
+        #menu, #victory { position: absolute; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; }
+        .option-group { margin: 10px; padding: 15px; border: 1px solid #ccc; border-radius: 15px; width: 85%; max-width: 350px; background: #f9f9f9; }
+        .speed-btn { padding: 12px 18px; font-size: 1.1rem; cursor: pointer; border: 2px solid #26a69a; border-radius: 10px; background: white; color: #26a69a; margin: 5px; min-width: 80px; font-weight: bold; transition: 0.3s; }
+        .speed-btn.selected { background: #004d40; color: white; border-color: #002d20; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        #start-btn { padding: 18px 50px; font-size: 1.5rem; cursor: pointer; border: none; border-radius: 50px; background: #00796b; color: white; margin-top: 25px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        .hidden { display: none !important; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<div id="menu">
+    <h1 style="color:#00796b; margin-bottom: 5px;">משחק הזיכרון</h1>
+    <div class="option-group">
+        <p style="margin-top:0; color:#555;"><strong>בחר מהירות תנועה:</strong></p>
+        <div style="display:flex; justify-content:center; gap:5px;">
+            <button class="speed-btn" id="btn-slow" onclick="selectSpeed(1, 'btn-slow')">צב</button>
+            <button class="speed-btn selected" id="btn-med" onclick="selectSpeed(2.2, 'btn-med')">ארנב</button>
+            <button class="speed-btn" id="btn-fast" onclick="selectSpeed(4, 'btn-fast')">צ'יטה</button>
+        </div>
+    </div>
+    <div class="option-group">
+        <p style="margin-top:0; color:#555;"><strong>כמות זוגות (4-8):</strong> <span id="pairValue" style="color:#00796b; font-weight:bold;">5</span></p>
+        <input type="range" id="pairCount" min="4" max="8" value="5" style="width: 90%; cursor: pointer;">
+    </div>
+    <button id="start-btn" onclick="startGame()">התחל לשחק!</button>
+</div>
+<div id="victory" class="hidden">
+    <h1 style="font-size: 2.5rem;">כל הכבוד! 🌟</h1>
+    <p style="font-size: 1.2rem;">ניצחת את המשחק!</p>
+    <button onclick="location.reload()" style="padding:15px 40px; background:#26a69a; color:white; border:none; border-radius:10px; font-size:1.2rem;">שחק שוב</button>
+</div>
+<canvas id="gameCanvas"></canvas>
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const pairInput = document.getElementById('pairCount');
+    const pairValueDisplay = document.getElementById('pairValue');
+    pairInput.oninput = () => pairValueDisplay.innerText = pairInput.value;
+    let speedMultiplier = 2.2; let maxPairs = 5; let gameActive = false; let cards = []; let selectedFirst = null; let currentGoalPairs = 1; let isPausedForEffect = false; const CARD_SIZE = 55;
+    const cardData = [
+        { id: 'ant', text: 'נמלה' }, { id: 'baby', text: 'תִּינוק' }, { id: 'cake', text: 'עוגה' }, { id: 'cat', text: 'חתול' }, { id: 'dog', text: 'כֶּלֶב' }, { id: 'egg', text: 'בֵּיצָה' }, { id: 'fish', text: 'דג' }, { id: 'flower', text: 'פֶּרַח' }, { id: 'foot', text: 'רגל' }, { id: 'girl', text: 'ילדה' }, { id: 'hamster', text: 'אוגר' }, { id: 'hand', text: 'יד' }, { id: 'house', text: 'בַּית' }, { id: 'moon', text: 'ירח' }, { id: 'fire', text: 'אשׁ' }, { id: 'sand', text: 'חול' }, { id: 'salt', text: 'מלח' }, { id: 'spoon', text: 'כַּף' }, { id: 'star', text: 'כּוכָב' }, { id: 'sun', text: 'שׁמש' }
+    ];
+    function selectSpeed(s, btnId) { speedMultiplier = s; document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.remove('selected')); document.getElementById(btnId).classList.add('selected'); }
+    class Card {
+        constructor(content, type, matchId) {
+            this.content = content; this.type = type; this.matchId = matchId; this.w = CARD_SIZE; this.h = CARD_SIZE;
+            this.x = Math.random() * (canvas.width - this.w); this.y = Math.random() * (canvas.height - this.h);
+            this.vx = (Math.random() - 0.5) * speedMultiplier * 2.5; this.vy = (Math.random() - 0.5) * speedMultiplier * 2.5;
+            this.selected = false; this.blinking = false; this.opacity = 1; this.img = null;
+            if (this.type === 'img') { this.img = new Image(); this.img.src = 'images/' + this.matchId + '.png'; }
+        }
+        draw() {
+            ctx.save(); ctx.globalAlpha = this.opacity; ctx.fillStyle = "white"; ctx.shadowBlur = 4; ctx.shadowColor = "rgba(0,0,0,0.15)";
+            ctx.beginPath(); ctx.roundRect(this.x, this.y, this.w, this.h, 10); ctx.fill();
+            if (this.selected) { ctx.strokeStyle = "#ff9800"; ctx.lineWidth = 4; ctx.stroke(); }
+            if (this.type === 'img') {
+                if (this.img && this.img.complete && this.img.naturalWidth !== 0) { ctx.drawImage(this.img, this.x + 6, this.y + 6, this.w - 12, this.h - 12); }
+                else { ctx.fillStyle = "#f0f0f0"; ctx.fillRect(this.x+6, this.y+6, this.w-12, this.h-12); }
+            } else { ctx.fillStyle = "#333"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center"; ctx.fillText(this.content, this.x + this.w / 2, this.y + this.h / 2 + 5); }
+            ctx.restore();
+        }
+        update() {
+            if (this.selected || this.blinking || isPausedForEffect) return;
+            this.x += this.vx; this.y += this.vy;
+            if (this.x <= 0 || this.x + this.w >= canvas.width) this.vx *= -1;
+            if (this.y <= 0 || this.y + this.h >= canvas.height) this.vy *= -1;
+        }
+    }
+    function startGame() { maxPairs = parseInt(pairInput.value); document.getElementById('menu').classList.add('hidden'); canvas.width = window.innerWidth; canvas.height = window.innerHeight; gameActive = true; addPairs(1); requestAnimationFrame(gameLoop); }
+    function addPairs(n) { const shuffled = [...cardData].sort(() => 0.5 - Math.random()); const selected = shuffled.slice(0, n); cards = []; selected.forEach(data => { cards.push(new Card(null, 'img', data.id)); cards.push(new Card(data.text, 'txt', data.id)); }); }
+    function gameLoop() {
+        if (!gameActive) return; ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < cards.length; i++) { for (let j = i + 1; j < cards.length; j++) {
+            let c1 = cards[i], c2 = cards[j]; let dist = Math.hypot(c1.x - c2.x, c1.y - c2.y);
+            if (dist < CARD_SIZE) { [c1.vx, c2.vx] = [c2.vx, c1.vx]; [c1.vy, c2.vy] = [c2.vy, c1.vy]; }
+        } }
+        cards.forEach(card => { card.update(); card.draw(); }); requestAnimationFrame(gameLoop);
+    }
+    const inputEvt = 'ontouchstart' in window ? 'touchstart' : 'mousedown';
+    canvas.addEventListener(inputEvt, (e) => {
+        if (isPausedForEffect) return; const rect = canvas.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const clicked = cards.find(c => cx > c.x && cx < c.x + c.w && cy > c.y && cy < c.y + c.h);
+        if (!clicked || clicked.blinking) return;
+        if (!selectedFirst) { selectedFirst = clicked; clicked.selected = true; }
+        else if (selectedFirst === clicked) { clicked.selected = false; selectedFirst = null; }
+        else { if (selectedFirst.matchId === clicked.matchId && selectedFirst.type !== clicked.type) { clicked.selected = true; successMatch(selectedFirst, clicked); } else { selectedFirst.selected = false; selectedFirst = null; } }
+    }, {passive: false});
+    function successMatch(c1, c2) {
+        isPausedForEffect = true; c1.blinking = true; c2.blinking = true; let count = 0;
+        const blink = setInterval(() => {
+            c1.opacity = (c1.opacity === 1) ? 0.2 : 1; c2.opacity = c1.opacity;
+            if (++count > 6) { clearInterval(blink); cards = cards.filter(c => c !== c1 && c !== c2); selectedFirst = null; isPausedForEffect = false;
+                if (cards.length === 0) { if (currentGoalPairs < maxPairs) addPairs(++currentGoalPairs); else { document.getElementById('victory').classList.remove('hidden'); gameActive = false; } }
+            }
+        }, 400);
+    }
+</script>
+</body>
+</html>
